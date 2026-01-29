@@ -1,0 +1,107 @@
+/* =============================================================================
+   Stock Market DSS - Main Stylesheet
+   ============================================================================= */
+
+/* -----------------------------------------------------------------------------
+   Main Container Styling
+   ----------------------------------------------------------------------------- */
+.main .block-container {
+    padding-top: 1rem;
+    padding-bottom: 1rem;
+}
+
+/* -----------------------------------------------------------------------------
+   Sector Box Styling
+   ----------------------------------------------------------------------------- */
+.sector-box {
+    background: linear-gradient(135deg, #1e3a5f 0%, #2d5a87 100%);
+    border-radius: 12px;
+    padding: 1.2rem;
+    margin-bottom: 1rem;
+    border: 1px solid #3d7ab5;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+}
+
+.sector-title {
+    color: #ffffff;
+    font-size: 1.1rem;
+    font-weight: 700;
+    margin-bottom: 0.8rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 2px solid #4a9eff;
+}
+
+.stock-chip {
+    display: inline-block;
+    background: rgba(74, 158, 255, 0.2);
+    color: #8fc4ff;
+    padding: 0.3rem 0.7rem;
+    border-radius: 20px;
+    margin: 0.2rem;
+    font-size: 0.85rem;
+    font-weight: 500;
+    border: 1px solid rgba(74, 158, 255, 0.4);
+    transition: all 0.2s ease;
+}
+
+.stock-chip:hover {
+    background: rgba(74, 158, 255, 0.4);
+    border-color: #4a9eff;
+}
+
+/* -----------------------------------------------------------------------------
+   Header Styling
+   ----------------------------------------------------------------------------- */
+.main-header {
+    background: linear-gradient(90deg, #0f2027 0%, #203a43 50%, #2c5364 100%);
+    padding: 1.5rem;
+    border-radius: 10px;
+    margin-bottom: 1.5rem;
+    text-align: center;
+}
+
+.main-header h1 {
+    color: #ffffff;
+    margin: 0;
+    font-size: 2rem;
+}
+
+.main-header p {
+    color: #a0c4e8;
+    margin: 0.5rem 0 0 0;
+}
+
+/* -----------------------------------------------------------------------------
+   Sidebar Styling
+   ----------------------------------------------------------------------------- */
+.css-1d391kg {
+    padding-top: 1rem;
+}
+
+/* -----------------------------------------------------------------------------
+   Tab Styling
+   ----------------------------------------------------------------------------- */
+.stTabs [data-baseweb="tab-list"] {
+    gap: 8px;
+}
+
+.stTabs [data-baseweb="tab"] {
+    background-color: #1e3a5f;
+    border-radius: 8px 8px 0 0;
+    padding: 10px 20px;
+    color: white;
+}
+
+.stTabs [aria-selected="true"] {
+    background-color: #2d5a87;
+}
+
+/* -----------------------------------------------------------------------------
+   Metric Cards
+   ----------------------------------------------------------------------------- */
+.metric-card {
+    background: #1e3a5f;
+    border-radius: 10px;
+    padding: 1rem;
+    text-align: center;
+}
