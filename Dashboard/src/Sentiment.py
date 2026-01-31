@@ -28,7 +28,7 @@ from google.genai import types
 # =============================================================================
 
 # API Key (hardcoded for now - move to .env for production)
-GEMINI_API_KEY = "AIzaSyDJ-kYaNWQ0az1-dZOKT2K9R7dok7IVlm8"
+GEMINI_API_KEY = ""
 
 # Model settings
 GEMINI_MODEL = "gemini-2.0-flash-lite"  # Lite version, better for free tier

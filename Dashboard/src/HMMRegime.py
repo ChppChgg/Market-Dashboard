@@ -39,13 +39,13 @@ CONVERGENCE_TOL = 1e-4 # Stop when log-likelihood improvement < this
 RANDOM_STATE = 42      # For reproducibility
 
 # Rolling Window Training settings - TUNED FOR RESPONSIVENESS
-TRAINING_WINDOW = 504  # 2 years (was 3) - more responsive to recent conditions
+TRAINING_WINDOW = 378  # 2 years (was 3) - more responsive to recent conditions
 STEP_SIZE = 21         # Monthly retraining (was quarterly) - faster adaptation
 MIN_TRAINING_SAMPLES = 126  # 6 months minimum (was 1 year) - can react faster
 
 # Reality Check thresholds (override HMM when it disagrees with actual price action)
-REALITY_CHECK_WINDOW = 40     # Days to look back (shorter = more responsive)
-BULLISH_THRESHOLD = 0.03      # +3% = clearly bullish (was 5%, now more sensitive)
+REALITY_CHECK_WINDOW = 25     # Days to look back (shorter = more responsive)
+BULLISH_THRESHOLD = 0.05      # +3% = clearly bullish (was 5%, now more sensitive)
 BEARISH_THRESHOLD = -0.03     # -3% = clearly bearish (was 5%)
 CRASH_THRESHOLD = -0.08       # -8% in 20 days = crash (was 10%)
 RALLY_THRESHOLD = 0.05        # +5% in 20 days = strong rally (was 8%)
