@@ -11,6 +11,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 import json
 import sys
+import html
 
 # Add src to path for imports
 sys.path.append(str(Path(__file__).parent / "src"))
@@ -23,11 +24,15 @@ from HMMRegime import (
     get_volatility_label,
     get_volatility_color,
     REGIME_COLORS,
-    VOLATILITY_COLORS,
-    validate_regime_detection,
-    print_validation_report,
     calculate_regime_stress_indicators,
     get_current_regime_outlook
+)
+from Sentiment import (
+    analyze_sentiment,
+    get_sentiment_color,
+    get_sentiment_emoji,
+    SentimentResult,
+    SENTIMENT_RATINGS
 )
 
 
@@ -48,13 +53,26 @@ def compute_hmm_regimes(ticker: str, df_json: str) -> dict:
     Returns:
         Dictionary with regime results
     """
-    # Reconstruct DataFrame from JSON
+    # Reconstruct DataFrame from JSON (ISO format)
     df = pd.read_json(df_json)
     df['Date'] = pd.to_datetime(df['Date'])
     
+    print(f"[compute_hmm_regimes] Date range after JSON parse: {df['Date'].min()} to {df['Date'].max()}")
+    
     # Run HMM detection
     regime_result = detect_regimes(df)
-    all_zones = get_regime_zones(regime_result['df'])
+    
+    # Ensure Date column is still datetime before getting zones
+    result_df = regime_result['df']
+    if 'Date' in result_df.columns:
+        if result_df['Date'].dtype in ['int64', 'float64']:
+            result_df['Date'] = pd.to_datetime(result_df['Date'], unit='ms')
+        else:
+            result_df['Date'] = pd.to_datetime(result_df['Date'])
+    
+    print(f"[compute_hmm_regimes] Date range before zones: {result_df['Date'].min()} to {result_df['Date'].max()}")
+    
+    all_zones = get_regime_zones(result_df)
     
     return {
         'trend': regime_result['current_trend'],
@@ -526,7 +544,141 @@ def render_asset_analysis():
     st.markdown("---")
     
     # =========================================================================
-    # HMM REGIME DETECTION - BUTTON TRIGGERED
+    # SENTIMENT ANALYSIS SECTION
+    # =========================================================================
+    
+    st.markdown("### 📰 Market Sentiment Analysis")
+    
+    # Initialize session state for sentiment results
+    sentiment_key = f"sentiment_result_{st.session_state.selected_asset}"
+    if sentiment_key not in st.session_state:
+        st.session_state[sentiment_key] = None
+    
+    # Three-column layout: Button | Summary | Headlines
+    sent_col_btn, sent_col_summary, sent_col_headlines = st.columns([1, 2, 2])
+    
+    with sent_col_btn:
+        run_sentiment = st.button("🤖 Analyze Sentiment", type="secondary", 
+                                   help="Analyze recent news using Gemini AI")
+        
+        if run_sentiment:
+            with st.spinner("Analyzing sentiment with Gemini..."):
+                try:
+                    result = analyze_sentiment(selected_asset)
+                    st.session_state[sentiment_key] = result
+                except Exception as e:
+                    st.error(f"❌ Sentiment analysis failed: {str(e)}")
+                    st.session_state[sentiment_key] = None
+    
+    # Display sentiment results if available
+    if st.session_state[sentiment_key] is not None:
+        result = st.session_state[sentiment_key]
+        
+        if result.error:
+            with sent_col_summary:
+                st.error(f"Analysis error: {result.error}")
+        else:
+            # Middle column: Summary (expanded to fill space better)
+            with sent_col_summary:
+                sentiment_color = get_sentiment_color(result.overall_sentiment)
+                sentiment_emoji = get_sentiment_emoji(result.overall_sentiment)
+                
+                st.markdown(f"""
+                <div style="background: linear-gradient(135deg, #1e3a5f 0%, #2d5a87 100%);
+                            border-radius: 10px; padding: 1.2rem; margin-bottom: 0.8rem;
+                            border: 2px solid {sentiment_color}; height: auto;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                        <span style="color: #a0c4e8; font-size: 1rem; font-weight: 500;">Overall Sentiment</span>
+                        <span style="color: {sentiment_color}; font-size: 1.3rem; font-weight: bold;">
+                            {sentiment_emoji} {result.overall_sentiment} ({result.confidence*100:.0f}%)
+                        </span>
+                    </div>
+                    <div style="background: rgba(0,0,0,0.2); border-radius: 6px; padding: 0.8rem; margin-top: 0.5rem;">
+                        <div style="color: #ccc; font-size: 0.9rem; line-height: 1.5;">
+                            {result.summary}
+                        </div>
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                # Key themes with better styling
+                if result.key_themes:
+                    themes_html = " ".join([f'<span style="background: #2d5a87; color: #fff; padding: 4px 12px; border-radius: 15px; font-size: 0.8rem; margin-right: 6px; display: inline-block; margin-bottom: 4px;">{t}</span>' for t in result.key_themes[:4]])
+                    st.markdown(f'<div style="margin-top: 0.3rem;"><span style="color: #a0c4e8; font-size: 0.8rem;">Key Themes:</span><div style="margin-top: 0.4rem;">{themes_html}</div></div>', unsafe_allow_html=True)
+                
+                # Show bullish/bearish signals if available
+                if result.bullish_signals or result.bearish_signals:
+                    signals_html = ""
+                    if result.bullish_signals:
+                        signals_html += f'<div style="color: #00ff88; font-size: 0.75rem; margin-top: 0.5rem;">📈 {" • ".join(result.bullish_signals[:2])}</div>'
+                    if result.bearish_signals:
+                        signals_html += f'<div style="color: #ff4444; font-size: 0.75rem; margin-top: 0.3rem;">📉 {" • ".join(result.bearish_signals[:2])}</div>'
+                    st.markdown(signals_html, unsafe_allow_html=True)
+            
+            # Right column: Headlines as clickable links with sentiment (scrollable)
+            with sent_col_headlines:
+                st.markdown("""
+                <div style="font-size: 0.9rem; color: #a0c4e8; margin-bottom: 0.5rem; font-weight: bold;">
+                    📰 Recent Headlines
+                </div>
+                """, unsafe_allow_html=True)
+                
+                # Scrollable container with headlines
+                headlines_items = []
+                for i, headline in enumerate(result.headlines):
+                    raw_title = headline.get('title', 'No title')[:55]
+                    if len(headline.get('title', '')) > 55:
+                        raw_title += "..."
+                    title = html.escape(raw_title)
+                    source = html.escape(headline.get('source', 'Unknown'))
+                    link = headline.get('link', '#')
+                    h_sentiment = headline.get('sentiment', 'Neutral')
+                    
+                    # Sentiment badge colors
+                    if h_sentiment == 'Good':
+                        badge_color = '#00ff88'
+                        badge_bg = 'rgba(0, 255, 136, 0.15)'
+                    elif h_sentiment == 'Bad':
+                        badge_color = '#ff4444'
+                        badge_bg = 'rgba(255, 68, 68, 0.15)'
+                    else:
+                        badge_color = '#ffc107'
+                        badge_bg = 'rgba(255, 193, 7, 0.15)'
+                    
+                    headlines_items.append(f'<div style="background: #1a2f4a; border-radius: 6px; padding: 0.5rem; margin-bottom: 0.4rem; font-size: 0.75rem;"><div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 8px;"><a href="{link}" target="_blank" style="color: #4a9eff; text-decoration: none; flex: 1; line-height: 1.3;">{title}</a><span style="background: {badge_bg}; color: {badge_color}; padding: 2px 6px; border-radius: 4px; font-size: 0.65rem; font-weight: bold; white-space: nowrap;">{h_sentiment}</span></div><div style="color: #666; font-size: 0.65rem; margin-top: 3px;">{source}</div></div>')
+                
+                # Join all headlines and wrap in scrollable container
+                all_headlines = "".join(headlines_items)
+                st.markdown(
+                    f'<div style="max-height: 280px; overflow-y: auto; padding-right: 5px; scrollbar-width: thin; scrollbar-color: #4a9eff #1a2f4a;">{all_headlines}</div>',
+                    unsafe_allow_html=True
+                )
+    else:
+        # Placeholder when no sentiment analysis yet
+        with sent_col_summary:
+            st.markdown("""
+            <div style="background: linear-gradient(135deg, #1e3a5f 0%, #2d5a87 100%);
+                        border-radius: 10px; padding: 1.5rem; text-align: center; min-height: 150px;
+                        display: flex; align-items: center; justify-content: center;">
+                <div style="color: #a0c4e8; font-size: 0.95rem;">
+                    Click <b style="color: #4a9eff;">"🤖 Analyze Sentiment"</b> to get AI-powered market sentiment analysis
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+        with sent_col_headlines:
+            st.markdown("""
+            <div style="background: #1a2f4a; border-radius: 10px; padding: 1.5rem; text-align: center; min-height: 150px;
+                        display: flex; align-items: center; justify-content: center;">
+                <div style="color: #666; font-size: 0.9rem;">
+                    📰 News headlines with sentiment ratings will appear here
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+    
+    st.markdown("---")
+    
+    # =========================================================================
+    # HMM REGIME DETECTION - LOGIC (Button will be in sidebar)
     # =========================================================================
     
     # Initialize session state for HMM results (cached per ticker, not per date range)
@@ -534,10 +686,9 @@ def render_asset_analysis():
     if hmm_key not in st.session_state:
         st.session_state[hmm_key] = None
     
-    # Button to run HMM analysis
-    col_btn, col_status = st.columns([1, 3])
-    with col_btn:
-        run_hmm = st.button("🔍 Run Regime Detection", type="primary", help="Analyze market regimes using Hidden Markov Model on FULL history")
+    # Initialize run_hmm trigger (will be set by button in sidebar)
+    if 'run_hmm_trigger' not in st.session_state:
+        st.session_state.run_hmm_trigger = False
     
     regime_detected = False
     current_trend = None
@@ -545,11 +696,12 @@ def render_asset_analysis():
     regime_stats = None
     regime_zones = []
     
-    if run_hmm:
+    # Process HMM if triggered (either from this run or previous)
+    if st.session_state.run_hmm_trigger:
+        st.session_state.run_hmm_trigger = False  # Reset trigger
         with st.spinner("Detecting market regimes on full dataset..."):
             try:
                 # Use FULL dataset (df) for HMM, not the filtered one
-                # Use FULL dataset for HMM analysis
                 df_for_hmm = df.copy()
                 df_for_hmm['Date'] = pd.to_datetime(df_for_hmm['Date'])
                 
@@ -558,7 +710,7 @@ def render_asset_analysis():
                     st.session_state[hmm_key] = None
                 else:
                     # Use cached computation - will be instant on repeat calls
-                    df_json = df_for_hmm.to_json()
+                    df_json = df_for_hmm.to_json(date_format='iso')
                     result = compute_hmm_regimes(selected_asset, df_json)
                     
                     st.session_state[hmm_key] = {
@@ -586,27 +738,40 @@ def render_asset_analysis():
         start_dt = pd.to_datetime(start_date)
         end_dt = pd.to_datetime(end_date)
         
+        # Debug: Print first zone dates to see format
+        if all_zones:
+            first_zone = all_zones[0]
+            print(f"[DEBUG] First zone start type: {type(first_zone['start'])}, value: {first_zone['start']}")
+        
         regime_zones = []
         for zone in all_zones:
-            zone_start = pd.to_datetime(zone['start'])
-            zone_end = pd.to_datetime(zone['end'])
-            
-            # Check if zone overlaps with selected date range
-            if zone_end >= start_dt and zone_start <= end_dt:
-                # Clip zone to date range
-                clipped_start = max(zone_start, start_dt)
-                clipped_end = min(zone_end, end_dt)
-                regime_zones.append({
-                    'start': clipped_start,
-                    'end': clipped_end,
-                    'regime': zone['regime'],
-                    'color': zone['color']
-                })
+            try:
+                # Dates should now be ISO strings from get_regime_zones
+                zone_start = pd.to_datetime(zone['start'])
+                zone_end = pd.to_datetime(zone['end'])
+                
+                # Remove timezone info if present for comparison
+                if hasattr(zone_start, 'tzinfo') and zone_start.tzinfo is not None:
+                    zone_start = zone_start.tz_localize(None)
+                if hasattr(zone_end, 'tzinfo') and zone_end.tzinfo is not None:
+                    zone_end = zone_end.tz_localize(None)
+                
+                # Check if zone overlaps with selected date range
+                if zone_end >= start_dt and zone_start <= end_dt:
+                    # Clip zone to date range
+                    clipped_start = max(zone_start, start_dt)
+                    clipped_end = min(zone_end, end_dt)
+                    regime_zones.append({
+                        'start': clipped_start,
+                        'end': clipped_end,
+                        'regime': zone['regime'],
+                        'color': zone['color']
+                    })
+            except Exception as e:
+                print(f"[DEBUG] Error processing zone: {e}")
+                continue
         
         print(f"[DEBUG] Filtered to {len(regime_zones)} zones for date range {start_dt} to {end_dt}")
-        
-        with col_status:
-            st.success(f"✅ **{current_trend.capitalize()}** trend | **{current_volatility.capitalize()}** vol | {len(regime_zones)} zones in view")
     
     # =========================================================================
     # MAIN CONTENT LAYOUT: Chart (left) + Metrics (right)
@@ -724,6 +889,18 @@ def render_asset_analysis():
     # =========================================================================
     
     with metrics_col:
+        # HMM Detection Button - At the top of sidebar
+        if st.button("🔍 Run Regime Detection", type="primary", 
+                     help="Analyze market regimes using Hidden Markov Model on FULL history",
+                     use_container_width=True):
+            st.session_state.run_hmm_trigger = True
+            st.rerun()
+        
+        # Show status if regime detected
+        if regime_detected:
+            st.success(f"✅ {len(regime_zones)} zones in view")
+        
+        st.markdown("---")
         st.markdown("### 📈 Market Regime")
         
         if regime_detected:
@@ -767,7 +944,7 @@ def render_asset_analysis():
                 # Get regime outlook
                 df_for_outlook = df.copy()
                 df_for_outlook['Date'] = pd.to_datetime(df_for_outlook['Date'])
-                df_json = df_for_outlook.to_json()
+                df_json = df_for_outlook.to_json(date_format='iso')
                 
                 # Reconstruct regime data
                 regime_result = detect_regimes(df_for_outlook)
@@ -862,67 +1039,6 @@ def render_asset_analysis():
                         </div>
                     </div>
                     """, unsafe_allow_html=True)
-            
-            # =====================================================================
-            # VALIDATION SECTION
-            # =====================================================================
-            st.markdown("---")
-            st.markdown("#### 🧪 Model Validation")
-            
-            # Validation button
-            val_key = f"validation_{st.session_state.selected_asset}"
-            if st.button("📋 Validate Against Known Events", key="validate_btn", help="Test if the model correctly identifies historical crashes and rallies"):
-                with st.spinner("Running validation..."):
-                    try:
-                        # Get the full regime DataFrame from cache
-                        df_for_hmm = df.copy()
-                        df_for_hmm['Date'] = pd.to_datetime(df_for_hmm['Date'])
-                        df_json = df_for_hmm.to_json()
-                        result = compute_hmm_regimes(selected_asset, df_json)
-                        
-                        # Reconstruct DataFrame for validation
-                        regime_df = df_for_hmm.copy()
-                        regime_result = detect_regimes(regime_df)
-                        
-                        # Run validation
-                        validation_results = validate_regime_detection(regime_result['df'])
-                        st.session_state[val_key] = validation_results
-                    except Exception as e:
-                        st.error(f"Validation failed: {str(e)}")
-                        st.session_state[val_key] = None
-            
-            # Display validation results if available
-            if val_key in st.session_state and st.session_state[val_key] is not None:
-                val = st.session_state[val_key]
-                summary = val['summary']
-                
-                # Grade display
-                grade = summary.get('grade', 'N/A')
-                grade_color = "#00ff88" if grade in ['A', 'B'] else "#ffc107" if grade == 'C' else "#ff4444"
-                
-                st.markdown(f"""
-                <div style="background: linear-gradient(135deg, #1a2f4a 0%, #2d4a6a 100%);
-                            border-radius: 10px; padding: 1rem; margin: 0.5rem 0;
-                            border: 2px solid {grade_color}; text-align: center;">
-                    <div style="color: #a0c4e8; font-size: 0.7rem;">VALIDATION GRADE</div>
-                    <div style="color: {grade_color}; font-size: 2rem; font-weight: bold;">{grade}</div>
-                    <div style="color: #888; font-size: 0.7rem;">
-                        {summary.get('pass_rate', 0)}% pass rate | {summary.get('avg_accuracy', 0)}% avg accuracy
-                    </div>
-                </div>
-                """, unsafe_allow_html=True)
-                
-                # Event results in expander
-                with st.expander("📊 Detailed Results"):
-                    st.markdown("**Bearish Events:**")
-                    for event in val['bearish_events']:
-                        status = "✅" if event['status'] == 'PASS' else "❌" if event['status'] == 'FAIL' else "⚠️"
-                        st.markdown(f"{status} **{event['event']}**: {event['accuracy']}% ({event['days_correct']}/{event['days_total']} days)")
-                    
-                    st.markdown("**Bullish Events:**")
-                    for event in val['bullish_events']:
-                        status = "✅" if event['status'] == 'PASS' else "❌" if event['status'] == 'FAIL' else "⚠️"
-                        st.markdown(f"{status} **{event['event']}**: {event['accuracy']}% ({event['days_correct']}/{event['days_total']} days)")
         
         else:
             st.markdown("""
